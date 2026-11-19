@@ -403,6 +403,28 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; text-wrap: balance; 
 .ihead .hp { margin-right: 4px; }
 #coach { font-size: 14.5px; }
 
+/* wonders and trophies */
+.wonder { display: grid; grid-template-columns: 58px 1fr; gap: 10px; text-align: left; padding: 10px 4px; border-top: 2px dashed rgba(43,42,92,.15); }
+.wonder.mine { background: #fff4d1; border-radius: 14px; }
+.wonder .wn { font-family: var(--display); font-weight: 800; font-size: 17px; line-height: 1.1; }
+.wonder .wg { font-weight: 700; font-size: 14px; margin-top: 2px; }
+.wonder .wb { color: var(--muted); font-size: 13px; line-height: 1.3; margin-top: 2px; }
+.wonder .ws { font-size: 13.5px; margin-top: 5px; }
+.wonder .req { font-weight: 700; }
+.wonder .seeds i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--ink); background: #fff; margin-right: 2px; vertical-align: -1px; }
+.wonder .seeds i.on { background: var(--sun); }
+.wbuild { margin-top: 6px; padding: 8px 10px; font-size: 14.5px; }
+.wbuild:disabled { background: #eee; color: var(--muted); box-shadow: none; }
+.act.wonder-act { background: #fff4d1; }
+.wonder-line { font-weight: 700; }
+.trophies { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 12px; }
+.trophy { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; padding: 8px 4px; border-radius: 14px; background: #fff; border: 2px solid rgba(43,42,92,.15); }
+.trophy b { font-size: 13px; line-height: 1.15; }
+.trophy span { font-size: 11.5px; color: var(--muted); line-height: 1.2; }
+.trophy:not(.on) { opacity: .7; }
+.toast.trophy { display: flex; align-items: center; gap: 8px; background: #fff4d1; font-weight: 800; }
+.toast.trophy svg { width: 28px; height: 33px; flex: none; }
+
 </style>
 </head>
 <body>
@@ -459,6 +481,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; text-wrap: balance; 
           <button class="btn ghost" id="continueBtn" style="display:none">Continue</button>
           <button class="btn ghost" id="howBtn">How to play</button>
           <button class="btn ghost" id="soundCheck">Sound check</button>
+          <button class="btn ghost" id="trophyBtn">Trophies</button>
         </div>
         <p class="t-foot">Pick a house to start.</p>
       </div>
@@ -469,6 +492,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; text-wrap: balance; 
   <div class="overlay" id="techCard"><div class="card" id="techInner"></div></div>
   <div class="overlay" id="rewardCard"><div class="card" id="rewardInner"></div></div>
   <div class="overlay" id="help"><div class="card help" id="helpInner"></div></div>
+  <div class="overlay" id="wondersCard"><div class="card" id="wondersInner"></div></div>
+  <div class="overlay" id="trophyCard"><div class="card" id="trophyInner"></div></div>
   <div class="overlay" id="menu"><div class="card" id="menuInner"></div></div>
   <div class="overlay" id="endCard"><div class="card" id="endInner" style="text-align:center"></div></div>
 </div>
@@ -480,6 +505,7 @@ var Engine = (function () {
   // ---------------------------------------------------------------- config
   var CFG = {
     W: 16, H: 27,
+    wonderWin: 5,         // hold this many wonders at once and you win outright
     maxTurns: 30,
     komsiluk: 2,          // grain a turn from each friendly house you share a border with
     rainReachMin: 4, rainReachMax: 9,  // tiles inland a monsoon reaches (varies each year)
@@ -1037,6 +1063,10 @@ var Engine = (function () {
 
   // ---------------------------------------------------------------- economy
   function impYield(G, t, h) {
+    if (t.imp === 'fishery' && hasWonder(G, h, 'lighthouse')) return impYield0(G, t, h) + 1;
+    return impYield0(G, t, h);
+  }
+  function impYield0(G, t, h) {
     if (!t.imp) return 0;
     var moist = t.land !== 'palai' && (t.watered || t.dry <= 1);
     // wheat pays once a year, at harvest
@@ -1066,8 +1096,60 @@ var Engine = (function () {
     var base = 1 + (city.level >= 4 ? 1 : 0);
     return { total: base + sum + cap + perk, land: sum, level: base, capital: cap, sum: sum, perk: perk };
   }
+  var WONDERS = {
+    bridge:     { name: 'The Old Bridge', nod: 'stari most', cost: 22, req: 'towns3', gives: '+2 grain a turn and room for 1 more unit', blurb: 'One high stone arch over a green river. Boys dive off it in summer to show off.' },
+    kula:       { name: 'The Great Kula', nod: 'kula · kullë', cost: 22, req: 'kills4', gives: 'Every one of your towns defends twice as hard', blurb: 'A stone tower-house so thick that even rumours can’t get in.' },
+    bazaar:     { name: 'The Old Bazaar', nod: 'čaršija · çarshia', cost: 26, req: 'towns4', gives: '+1 grain a turn for every town you hold', blurb: 'Copper pots, coffee, shoemakers, and someone who will sell you a carpet whether you want one or not.' },
+    lighthouse: { name: 'The Lighthouse of the Isles', nod: 'svjetionik · fáros', cost: 20, req: 'fish2', gives: 'Boats and galleys sail 1 tile further; fishing boats bring +1', blurb: 'A white tower on the last rock before open sea. The keeper’s cat has never once been seasick.' },
+    hall:       { name: 'The Guslars’ Hall', nod: 'guslari', cost: 26, req: 'level4', gives: 'Your capital grows a level, and room for 1 more unit', blurb: 'Where the singers learn ten thousand lines by heart, and argue about all of them.' },
+    square:     { name: 'The Kolo Square', nod: 'kolo · horo · hora', cost: 30, req: 'sangam', gives: '+3 grain a turn', blurb: 'A great stone square where the whole land can hold hands and dance at once.' }
+  };
+  var WONDER_KEYS = Object.keys(WONDERS);
+  // wonders belong to the town they stand in: take the town and the wonder is yours
+  function wonderOwner(G, k) { var w = G.wonders && G.wonders[k]; return w ? G.cities[w.city].owner : -1; }
+  function hasWonder(G, h, k) { return h >= 0 && h < 4 && wonderOwner(G, k) === h; }
+  function wondersOf(G, h) { return WONDER_KEYS.filter(function (k) { return hasWonder(G, h, k); }).length; }
+  function wonderReq(G, h, k) {
+    var mine = G.cities.filter(function (c) { return c.owner === h; });
+    var S = (G.stats && G.stats[h]) || {};
+    switch (WONDERS[k].req) {
+      case 'towns3': return { have: mine.length, need: 3, text: 'Hold 3 towns' };
+      case 'towns4': return { have: mine.length, need: 4, text: 'Hold 4 towns' };
+      case 'kills4': return { have: S.kills || 0, need: 4, text: 'Win 4 battles' };
+      case 'fish2': return { have: G.tiles.filter(function (t) { return t.owner === h && t.imp === 'fishery'; }).length, need: 2, text: 'Run 2 fishing boats' };
+      case 'level4': return { have: Math.max.apply(null, mine.map(function (c) { return c.level; }).concat([0])), need: 4, text: 'Grow a town to level 4' };
+      case 'sangam': return { have: knows(G, h, 'sangam') ? 1 : 0, need: 1, text: 'Learn ' + TECHS.sangam.name };
+    }
+    return { have: 0, need: 1, text: '' };
+  }
+  function wonderCheck(G, city, k) {
+    var h = city.owner, W = WONDERS[k];
+    if (G.wonders[k]) return { ok: false, why: 'Already built' };
+    var r = wonderReq(G, h, k);
+    if (r.have < r.need) return { ok: false, why: r.text + ' (' + Math.min(r.have, r.need) + '/' + r.need + ')', locked: true };
+    if (G.houses[h].rice < W.cost) return { ok: false, why: 'Needs ' + W.cost + ' grain' };
+    return { ok: true };
+  }
+  function buildWonder(G, city, k) {
+    var ck = wonderCheck(G, city, k);
+    if (!ck.ok) return null;
+    var h = city.owner, ev = [];
+    G.houses[h].rice -= WONDERS[k].cost;
+    G.wonders[k] = { city: city.id, turn: G.turn, by: h };
+    ev.push({ type: 'wonder', h: h, k: k, city: city.id, i: city.i });
+    if (k === 'hall') {
+      var cap = G.cities.filter(function (c) { return c.owner === h && c.capitalOf === h; })[0] || city;
+      if (cap.level < CFG.maxLevel) { cap.pop = cap.level; cityGrows(G, cap, ev); }
+    }
+    stat(G, h, 'wonders');
+    (G.chron = G.chron || []).push({ k: 'wonder', h: h, w: k, turn: G.turn, name: city.name });
+    return ev;
+  }
   function income(G, h) {
     var s = 2 * marksOf(G, h) + CFG.komsiluk * goodNeighbours(G, h).length;
+    if (hasWonder(G, h, 'bridge')) s += 2;
+    if (hasWonder(G, h, 'square')) s += 3;
+    if (hasWonder(G, h, 'bazaar')) s += G.cities.filter(function (c) { return c.owner === h; }).length;
     G.cities.forEach(function (c) { if (c.owner === h) s += cityIncome(G, c).total; }); return s;
   }
   // komšiluk: good neighbourliness. Two houses at peace that share a border trade across it,
@@ -1088,7 +1170,7 @@ var Engine = (function () {
   }
   // a small army: one unit per city, one more for a level-4 city, and one for the house
   function support(G, h) {
-    var s = 1;
+    var s = 1 + (hasWonder(G, h, 'bridge') ? 1 : 0) + (hasWonder(G, h, 'hall') ? 1 : 0);
     G.cities.forEach(function (c) { if (c.owner === h) s += 1 + (c.level >= 4 ? 1 : 0) + (c.perks && c.perks.festival ? 1 : 0); });
     return s;
   }
@@ -1098,7 +1180,7 @@ var Engine = (function () {
   }
   function unitCount(G, h) { return G.units.filter(function (u) { return u.owner === h; }).length; }
   // territory: land, plus half a point for each shallow-water tile inside your borders
-  function landCount(G, h) { var n = 0, w = 0; G.tiles.forEach(function (t) { if (t.owner !== h || t.deep) return; if (isLand(t)) n++; else w++; }); return n + Math.floor(w / 2) + 2 * marksOf(G, h); }
+  function landCount(G, h) { var n = 0, w = 0; G.tiles.forEach(function (t) { if (t.owner !== h || t.deep) return; if (isLand(t)) n++; else w++; }); return n + Math.floor(w / 2) + 2 * marksOf(G, h) + 3 * wondersOf(G, h); }
   function unitCost(G, h, type) {
     var c = UNITS[type].cost;
     if (h === 0 && UNITS[type].naval) c -= 2;
@@ -1133,7 +1215,7 @@ var Engine = (function () {
   }
   function movePoints(G, u) {
     var A = UNITS[u.type];
-    return A.move + (!A.naval && G.season === 2 ? 1 : 0);
+    return A.move + (!A.naval && G.season === 2 ? 1 : 0) + (A.naval && hasWonder(G, u.owner, 'lighthouse') ? 1 : 0);
   }
 
   // returns [{i, kind:'move'|'board'|'disembark'}]
@@ -1216,7 +1298,7 @@ var Engine = (function () {
     if (td.base === 'kurinji') { defMod *= 1.5; tags.push('Hills: defender ×1.5'); }
     else if (td.base === 'mullai' && td.land !== 'palai') { defMod *= 1.25; tags.push('Woods: defender ×1.25'); }
     var city = cityAt(G, td);
-    if (city && city.owner === d.owner) { var cm = ((city.perks && city.perks.walls) || city.capitalOf === city.owner) ? 2 : 1.5; if (cm > defMod) { defMod = cm; tags.push('Town: defender ×' + cm); } }
+    if (city && city.owner === d.owner) { var cm = ((city.perks && city.perks.walls) || city.capitalOf === city.owner || hasWonder(G, city.owner, 'kula')) ? 2 : 1.5; if (cm > defMod) { defMod = cm; tags.push('Town: defender ×' + cm); } }
     var af = atkBase * atkMod * (a.hp / A.hp), df = defBase * defMod * (d.hp / D.hp), tot = af + df;
     var dmg = Math.round(af / tot * atkBase * atkMod * 4.5);
     var ret = 0;
@@ -1600,6 +1682,7 @@ var Engine = (function () {
     var caps = G.cities.filter(function (c) { return c.capitalOf >= 0; });
     var o = caps[0].owner;
     if (o >= 0 && caps.every(function (c) { return c.owner === o; })) { endGame(G, o, 'capitals', ev); return; }
+    for (var wh = 0; wh < 4; wh++) if (G.houses[wh].alive && wondersOf(G, wh) >= CFG.wonderWin) { endGame(G, wh, 'wonders', ev); return; }
     var living = G.houses.filter(function (H) { return H.alive; });
     if (living.length === 1) { endGame(G, living[0].id, 'last', ev); return; }
     if (!G.houses[G.player].alive) { endGame(G, leader(G), 'eliminated', ev); }
@@ -1841,6 +1924,12 @@ var Engine = (function () {
         learn(G, h, pick).forEach(function (e) { ev.push(e); });
         continue;
       }
+      var wk = WONDER_KEYS.filter(function (k) { return !G.wonders[k] && wonderCheck(G, cities[0], k).ok; });
+      if (wk.length && rnd(G) < 0.3) {
+        var wc = cities.filter(function (c) { return c.capitalOf === h; })[0] || cities[0];
+        buildWonder(G, wc, wk[Math.floor(rnd(G) * wk.length)]).forEach(function (x) { ev.push(x); });
+        continue;
+      }
       if (H.rice >= 18) {
         var fc = cities.filter(function (c) { return feastCheck(G, c).ok; }).sort(function (a, b) { return b.level - a.level; })[0];
         if (fc && rnd(G) < 0.5) { feast(G, fc).forEach(function (e) { ev.push(e); }); continue; }
@@ -2024,12 +2113,13 @@ var Engine = (function () {
     G.persona = shuffle(G, PERSONA.slice());   // each game, a different rival plays aggressive
     G.mood = [0, 1, 2, 3].map(function (h) { return TEMPER_BASE[G.persona[h]]; });
     G.gifted = [0, 0, 0, 0]; G.giftTurn = [0, 0, 0, 0];
-    G.stats = [0, 1, 2, 3].map(function () { return { kills: 0, lost: 0, captured: 0, built: 0, learned: 0, feasts: 0, ruins: 0 }; });
+    G.stats = [0, 1, 2, 3].map(function () { return { kills: 0, lost: 0, captured: 0, built: 0, learned: 0, feasts: 0, ruins: 0, wonders: 0 }; });
+    G.wonders = {};
     G.chron = [];
     G.cities.forEach(function (c) { if (c.capitalOf >= 0) addUnit(G, 'warrior', c.owner, G.tiles[c.i], false); });
     // Pandya holds the narrow south and Lanka an island: both start a little stronger
     // per-house starting nudges, tuned by simulation
-    var BONUS = [{ rice: 3, lvl: 1, war: 0 }, { rice: 5, lvl: 2, war: 2 }, { rice: -5, lvl: 1, war: 0 }, { rice: 3, lvl: 1, war: 0 }];
+    var BONUS = [{ rice: 3, lvl: 1, war: 0 }, { rice: 4, lvl: 2, war: 2 }, { rice: -6, lvl: 1, war: 0 }, { rice: -2, lvl: 1, war: 0 }];
     BONUS.forEach(function (b, h) {
       var cc = G.cities[h]; G.houses[h].rice += b.rice;
       if (b.lvl > 1) { cc.level = b.lvl; claimTerritory(G, cc); }
@@ -2062,7 +2152,7 @@ var Engine = (function () {
     canSettle: canSettle, granary: granary, TECHS: TECHS, techCost: techCost, techCheck: techCheck, learn: learn, knows: knows, BEATS: BEATS,
     feast: feast, feastCheck: feastCheck, feastCost: feastCost,
     LANDMARKS: LANDMARKS, marksOf: marksOf, RULERS: RULERS, temper: temper, moodOf: moodOf, moodState: moodState, gift: gift, giftCheck: giftCheck, giftCost: giftCost,
-    REWARDS: REWARDS, RUINS: RUINS, harvestForecast: harvestForecast, setDifficulty: setDifficulty, goodNeighbours: goodNeighbours, fedThisYear: fedThisYear, typeCount: typeCount, CAPS: CAPS, rewardOptions: rewardOptions, chooseReward: chooseReward, friends: friends,
+    REWARDS: REWARDS, RUINS: RUINS, harvestForecast: harvestForecast, WONDERS: WONDERS, WONDER_KEYS: WONDER_KEYS, wonderOwner: wonderOwner, hasWonder: hasWonder, wondersOf: wondersOf, wonderReq: wonderReq, wonderCheck: wonderCheck, buildWonder: buildWonder, setDifficulty: setDifficulty, goodNeighbours: goodNeighbours, fedThisYear: fedThisYear, typeCount: typeCount, CAPS: CAPS, rewardOptions: rewardOptions, chooseReward: chooseReward, friends: friends,
     // for testing
     aiTurn: aiTurn, startTurn: startTurn
   };
@@ -3778,6 +3868,22 @@ var Voices = (function () {
   }
 
   var HOUSE_SPOTS = [[-17, -4], [16, -5], [-13, 7], [14, 6], [-4, -11], [3, 11]];
+  var WONDER_ART = {
+    bridge: '<path d="M4 50q26-6 52 0v6H4z" fill="#4fb0e6"/><path d="M4 30h52v6H48q-6-20-18-20T12 36H4z" fill="#efe6d2" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M4 30q26-30 52 0" fill="none" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M14 44v-4M46 44v-4" stroke="#2b2a5c" stroke-width="2"/><path d="M8 50q6-2 10 0M40 52q6-2 10 0" stroke="#fff" stroke-width="1.6" fill="none"/>',
+    kula: '<path d="M20 56V20h20v36z" fill="#efe6d2" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M16 21l14-14 14 14z" fill="#e45a3f" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M30 7V1" stroke="#2b2a5c" stroke-width="2"/><path d="M30 1l9 3-9 3" fill="#c8282e" stroke="#2b2a5c" stroke-width="1.4"/><path d="M28 28h4v6h-4zM28 40h4v6h-4z" fill="#3b2747"/><path d="M26 56v-6q4-5 8 0v6" fill="#7a4a2e" stroke="#2b2a5c" stroke-width="1.6"/>',
+    bazaar: '<path d="M4 54V34h52v20z" fill="#fffaf0" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M2 34l6-10h44l6 10z" fill="#c8282e" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M14 24l-4 10M26 24v10M38 24l2 10M50 24l4 10" stroke="#fff" stroke-width="3"/><circle cx="16" cy="46" r="5" fill="#d98a3a" stroke="#2b2a5c" stroke-width="2"/><path d="M28 50h10v-8H28z" fill="#6a4fc4" stroke="#2b2a5c" stroke-width="1.6"/><circle cx="46" cy="47" r="4" fill="#ffd23f" stroke="#2b2a5c" stroke-width="1.6"/>',
+    lighthouse: '<path d="M4 56q26-8 52 0" fill="#4fb0e6"/><path d="M22 56l4-36h8l4 36z" fill="#fff" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M23.5 44h13l.8 6h-14.6zM25 30h10l.6 6h-11.2z" fill="#c8282e"/><path d="M24 20h12v-8H24z" fill="#ffe27a" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M22 12h16l-8-7z" fill="#c8282e" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M14 16L2 12M46 16l12-4" stroke="#ffd23f" stroke-width="3" stroke-linecap="round"/>',
+    hall: '<path d="M6 56V30h48v26z" fill="#fffaf0" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M2 31L30 12l28 19z" fill="#e45a3f" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><path d="M14 56V42q4-6 8 0v14M38 56V42q4-6 8 0v14" fill="#7a4a2e" stroke="#2b2a5c" stroke-width="1.6"/><ellipse cx="30" cy="24" rx="4" ry="5" fill="#c98a4b" stroke="#2b2a5c" stroke-width="1.4"/><path d="M30 19v-6" stroke="#2b2a5c" stroke-width="1.6"/>',
+    square: '<ellipse cx="30" cy="40" rx="26" ry="14" fill="#efe6d2" stroke="#2b2a5c" stroke-width="2.4" stroke-linejoin="round"/><ellipse cx="30" cy="40" rx="16" ry="8" fill="none" stroke="#c8282e" stroke-width="1.6" stroke-dasharray="3 3"/><g transform="translate(49.0 38.0)"><path d="M-3 4l3-9 3 9z" fill="#c8282e" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g><g transform="translate(43.4 45.1)"><path d="M-3 4l3-9 3 9z" fill="#fff" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g><g transform="translate(30.0 48.0)"><path d="M-3 4l3-9 3 9z" fill="#f6bd3c" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g><g transform="translate(16.6 45.1)"><path d="M-3 4l3-9 3 9z" fill="#2f6fd6" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g><g transform="translate(11.0 38.0)"><path d="M-3 4l3-9 3 9z" fill="#c8282e" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g><g transform="translate(16.5 30.9)"><path d="M-3 4l3-9 3 9z" fill="#fff" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g><g transform="translate(30.0 28.0)"><path d="M-3 4l3-9 3 9z" fill="#f6bd3c" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g><g transform="translate(43.4 30.9)"><path d="M-3 4l3-9 3 9z" fill="#2f6fd6" stroke="#2b2a5c" stroke-width="1.2"/><circle cx="0" cy="-7" r="2.6" fill="#d79a68" stroke="#2b2a5c" stroke-width="1.2"/></g>'
+  };
+  function wname(k) { return E.WONDERS[k].name.replace(/^The /, 'the '); }
+  function wonderSvg(k, size) { return '<svg viewBox="0 0 60 60" width="' + (size || 56) + '" height="' + (size || 56) + '" xmlns="http://www.w3.org/2000/svg">' + WONDER_ART[k] + '</svg>'; }
+  var wonderPics = {};
+  function wonderPic(k) {
+    if (!wonderPics[k]) { var im = new Image(); im.onload = function () { layerDirty = true; need(); }; im.src = 'data:image/svg+xml,' + encodeURIComponent(wonderSvg(k, 120)); wonderPics[k] = im; }
+    return wonderPics[k].complete ? wonderPics[k] : null;
+  }
+  function wondersIn(city) { return E.WONDER_KEYS.filter(function (k) { return G.wonders && G.wonders[k] && G.wonders[k].city === city.id; }); }
   function drawCity(c, city) {
     var t = G.tiles[city.i], tp = topOf(t), x = tp[0], y = tp[1];
     if (city.owner < 0) {
@@ -3798,6 +3904,14 @@ var Voices = (function () {
     spots.forEach(function (s) { if (s[1] >= 0) A.put(c, A.HOUSE, x + s[0], y + s[1] + 4, 0.95); });
     if (P.market) drawStall(c, x + 17, y + 9, HC[city.owner]);
     if (P.walls) drawWalls(c, x, y + 4);
+    // wonders stand beside the town that built them
+    wondersIn(city).forEach(function (k, n) {
+      var im = wonderPic(k); if (!im) return;
+      var sz = HEX * 1.1, spot = [[0.8, -0.1], [-0.8, -0.1], [0, -0.85], [0.75, -0.75], [-0.75, -0.75], [0, 0.55]][n] || [0, 0];
+      var wx = x + spot[0] * HEX - sz / 2, wy = y + spot[1] * HEX - sz / 2;
+      c.fillStyle = 'rgba(43,42,92,0.18)'; c.beginPath(); c.ellipse(wx + sz / 2, wy + sz * 0.92, sz * 0.4, sz * 0.1, 0, 0, 7); c.fill();
+      c.drawImage(im, wx, wy, sz, sz);
+    });
   }
   // the land doesn't end at the top of the map: the Deccan rolls on north, fading into haze
   function drawNorth(c) {
@@ -4781,7 +4895,7 @@ var Voices = (function () {
   function refresh() { E.computeVis(G); computeReady(); layerDirty = true; fogDirty = true; renderHUD(); need(); save(); }
   function afterAction(ev) {
     handleEvents(ev, false).forEach(function (n) { toast(n[1], n[0]); });
-    refresh();
+    refresh(); trophyEval();
     if (G.over) setTimeout(showEnd, 1100);
   }
   function doMove(u, i, kind) {
@@ -4819,6 +4933,7 @@ var Voices = (function () {
     if (E.unitById(G, u.id)) select({ kind: 'unit', id: u.id, quiet: true }); else select(null);
   }
   function act(kind, arg) {
+    if (kind === 'wonders') { showWonders(sel && sel.kind === 'city' ? sel.id : null); return; }
     if (busy || !G || G.over) return;
     var ev = null;
     if (kind === 'reward') { checkRewards(); return; }
@@ -4912,6 +5027,11 @@ var Voices = (function () {
         case 'spoil':
           if (e.h === me) news.push(['bad', 'Your granaries were full, so ' + e.amount + ' grain spoiled. Spend it before it rots!']);
           break;
+        case 'wonder':
+          if (e.h === me) news.push(['good', 'You built ' + wname(e.k) + ' in ' + G.cities[e.city].name + '! It is worth 3 territory.']);
+          else news.push(['bad', houseName(e.h) + ' built ' + wname(e.k) + ' in ' + G.cities[e.city].name + '.']);
+          layerDirty = true;
+          break;
         case 'learn':
           if (e.h !== me && E.TECHS[e.k].tier >= 2) news.push(['', houseName(e.h) + ' learned ' + E.TECHS[e.k].name + '.']);
           break;
@@ -4968,6 +5088,7 @@ var Voices = (function () {
   function toast(text, kind) {
     var d = document.createElement('div');
     d.className = 'toast ' + (kind || ''); d.textContent = text;
+    if (kind === 'trophy') d.insertAdjacentHTML('afterbegin', medal(true));
     var box = $('toasts'); box.appendChild(d);
     while (box.children.length > 3) box.removeChild(box.firstChild);
     setTimeout(function () { d.style.opacity = '0'; }, 3200);
@@ -4986,6 +5107,8 @@ var Voices = (function () {
     nb1.forEach(function (h) { if (nb0.indexOf(h) < 0) news.push(['good', 'You and ' + houseName(h) + ' are good neighbours now (komšiluk). Each of you gets +' + E.CFG.komsiluk + ' grain a turn while the peace holds.']); });
     nb0.forEach(function (h) { if (nb1.indexOf(h) < 0 && G.houses[h].alive) news.push(['bad', 'The good-neighbour trade with ' + houseName(h) + ' has stopped.']); });
     var bl = babaSays(ev); if (bl) news.push(['baba', 'Baba says: “' + bl + '”']);
+    trophyEval();
+    [0, 1, 2, 3].forEach(function (h) { if (h !== G.player && G.houses[h].alive && E.wondersOf(G, h) === E.CFG.wonderWin - 1) news.push(['bad', houseName(h) + ' holds ' + (E.CFG.wonderWin - 1) + ' wonders. One more and they win!']); });
     var inc = ev.filter(function (e) { return e.type === 'income' && e.h === G.player; })[0];
     if (inc) news.unshift(['good', 'Your towns made ' + inc.amount + ' grain.']);
     var weather = ev.filter(function (e) { return e.type === 'palai' || e.type === 'revive'; });
@@ -5160,6 +5283,7 @@ var Voices = (function () {
     var who = city.owner < 0 ? 'Free village' : mine ? (city.capitalOf === city.owner ? 'Your capital' : 'Your town') :
       E.HOUSES[city.owner].name + (city.capitalOf === city.owner ? ' capital' : ' town');
     var h = '<div class="ihead">' + cityImg(city.owner, city.level) + '<div><h3>' + esc(city.name) + '</h3><div class="ta">' + who + (city.owner >= 0 ? pips : '') + '</div></div></div>';
+    wondersIn(city).forEach(function (k) { h += '<div class="warn wonder-line">★ Home of ' + E.WONDERS[k].name + '</div>'; });
     var landName = E.LANDS[t.base].en.toLowerCase();
     if (mine) {
       var inc = E.cityIncome(G, city);
@@ -5187,6 +5311,9 @@ var Voices = (function () {
           '<span>' + U[type].name + '</span><span class="cost">' + cost + ' grain</span>' + (ck.ok ? '' : '<span class="why">' + esc(ck.why) + '</span>') + '</button>';
       });
       h += '</div>';
+      var wNow = E.WONDER_KEYS.filter(function (k) { return E.wonderCheck(G, city, k).ok; });
+      h += '<div class="acts"><button class="act wide' + (wNow.length ? ' wonder-act' : ' locked') + '" data-act="wonders">' + wonderSvg(wNow[0] || 'bridge', 40) +
+        '<span>' + (wNow.length ? 'Build a wonder' : 'Wonders') + '</span>' + (wNow.length ? '<span class="cost">' + wNow.length + ' ready</span>' : '<span class="why">See what you are working toward</span>') + '</button></div>';
       if (city.level < E.CFG.maxLevel) {
         var fk = E.feastCheck(G, city);
         h += '<div class="acts"><button class="act wide" data-act="feast" ' + (fk.ok ? '' : 'disabled') + '>' + feastIcon() +
@@ -5284,7 +5411,7 @@ var Voices = (function () {
 
   // ------------------------------------------------------------ overlays
   // every closable sheet gets a small round × pinned to its top corner, and a tap on the dim backdrop closes it too
-  var CLOSERS = { techCard: 'tkClose', help: 'helpClose', menu: ['sClose', 'mClose'] };
+  var CLOSERS = { wondersCard: 'wClose', trophyCard: 'trClose', techCard: 'tkClose', help: 'helpClose', menu: ['sClose', 'mClose'] };
   function closeSheet(id) {
     var ids = [].concat(CLOSERS[id] || []), done = false;
     ids.forEach(function (b) { if (!done && $(b)) { $(b).click(); done = true; } });
@@ -5518,14 +5645,108 @@ var Voices = (function () {
     $('helpClose').onclick = function () { hide('help'); };
   }
   $('howBtn').onclick = showHelp;
+  $('trophyBtn').onclick = function () { Mu.unlock(); showTrophies(); };
   $('soundCheck').onclick = function () { Mu.unlock(); settings.music = settings.sfx = true; Mu.setEnabled('music', true); Mu.setEnabled('sfx', true); saveSettings(); Mu.setMood('title'); setTimeout(function () { Mu.sfx.capture(); }, 120); $('soundCheck').textContent = 'Sound is on'; };
 
+
+  // ---------------------------------------------------------------- wonders of the world
+  function showWonders(cityId) {
+    var city = cityId != null ? G.cities[cityId] : null, me = G.player;
+    if (city && city.owner !== me) city = null;
+    var h = '<h2>Wonders</h2><p class="sub">Only one house can build each wonder. Each is worth <b>3 territory</b> and has its own gift. A wonder belongs to whoever holds its town. <b>Hold ' + E.CFG.wonderWin + ' at once and you win outright.</b></p>';
+    E.WONDER_KEYS.forEach(function (k) {
+      var W = E.WONDERS[k], own = E.wonderOwner(G, k), built = G.wonders[k];
+      h += '<div class="wonder' + (own === me ? ' mine' : '') + '">' + wonderSvg(k, 58) + '<div><div class="wn">' + W.name + ' <span class="nod"><i>' + W.nod + '</i></span></div><div class="wg">' + W.gives + '.</div><div class="wb">' + W.blurb + '</div>';
+      if (built) h += '<div class="ws ' + (own === me ? 'goodt' : 'warn') + '">' + (own === me ? 'Yours, in ' : 'Held by ' + houseName(own) + ', in ') + esc(G.cities[built.city].name) + '.</div>';
+      else {
+        var r = E.wonderReq(G, me, k), dots = '';
+        for (var q = 0; q < r.need; q++) dots += '<i class="' + (q < r.have ? 'on' : '') + '"></i>';
+        h += '<div class="ws"><span class="req">' + r.text + '</span> <span class="seeds">' + dots + '</span></div>';
+        if (city) {
+          var ck = E.wonderCheck(G, city, k);
+          h += '<button class="btn wbuild" data-w="' + k + '" ' + (ck.ok ? '' : 'disabled') + '>' + (ck.ok ? 'Build in ' + esc(city.name) + ' · ' + W.cost + ' grain' : esc(ck.why)) + '</button>';
+        } else h += '<div class="sub">Costs ' + W.cost + ' grain. Build it from one of your towns.</div>';
+      }
+      h += '</div></div>';
+    });
+    h += '<button class="btn ghost" id="wClose">Close</button>';
+    $('wondersInner').innerHTML = h;
+    show('wondersCard');
+    $('wClose').onclick = function () { hide('wondersCard'); };
+    Array.prototype.forEach.call($('wondersInner').querySelectorAll('.wbuild'), function (b) {
+      b.onclick = function () {
+        if (b.disabled || !city) return;
+        var ev = E.buildWonder(G, city, b.getAttribute('data-w'));
+        if (!ev) { Mu.sfx.error(); return; }
+        hide('wondersCard'); Mu.sfx.capture();
+        layerDirty = true; afterAction(ev); renderPanel(); setTimeout(checkRewards, 650);
+      };
+    });
+  }
+
+  // ---------------------------------------------------------------- trophies, kept across games
+  var TROPHY_KEY = 'kolo.trophies.v1', trophies = {};
+  try { trophies = JSON.parse(localStorage.getItem(TROPHY_KEY) || '{}') || {}; } catch (e) { trophies = {}; }
+  var TROPHIES = [
+    ['village', 'A second town', 'Hold 2 towns at once'],
+    ['towns5', 'Five towns', 'Hold 5 towns at once'],
+    ['level5', 'Biggest town', 'Grow a town to level 5'],
+    ['wonder1', 'Wonder builder', 'Build a wonder'],
+    ['wonder3', 'Three wonders', 'Hold 3 wonders at once'],
+    ['battles10', 'Ten victories', 'Win 10 battles in one game'],
+    ['marks2', 'Sightseer', 'Hold 2 famous places at once'],
+    ['skills', 'Learned it all', 'Learn every skill in one game'],
+    ['dragon', 'Dragon friend', 'Wake the Zmaj'],
+    ['friends2', 'Good neighbours', 'Have 2 rival rulers friendly at once'],
+    ['win_gentle', 'A gentle victory', 'Win against Gentle rivals'],
+    ['win_fair', 'A fair victory', 'Win against Fair rivals'],
+    ['win_fierce', 'Against the odds', 'Win against Fierce rivals'],
+    ['win_wonders', 'Wonders of the world', 'Win by holding ' + E.CFG.wonderWin + ' wonders'],
+    ['win_capitals', 'Every capital', 'Win by taking every capital']
+  ].concat(E.HOUSES.map(function (H, i) { return ['house' + i, 'Victory for the ' + H.name, 'Win as the ' + H.name]; }));
+  var trophyEarned = function (id) { return !!trophies[id]; };
+  function trophyEval() {
+    if (!G || G.demo) return;
+    var me = G.player, mine = G.cities.filter(function (c) { return c.owner === me; }), S = (G.stats && G.stats[me]) || {}, got = [];
+    var won = G.over && G.over.winner === me;
+    var test = {
+      village: mine.length >= 2, towns5: mine.length >= 5, level5: mine.some(function (c) { return c.level >= 5; }),
+      wonder1: (S.wonders || 0) >= 1, wonder3: E.wondersOf(G, me) >= 3, battles10: (S.kills || 0) >= 10,
+      marks2: G.tiles.filter(function (t) { return t.mark && t.owner === me; }).length >= 2,
+      skills: Object.keys(E.TECHS).every(function (k) { return G.houses[me].tech[k]; }),
+      dragon: G.units.some(function (u) { return u.owner === me && u.type === 'yali'; }),
+      friends2: [0, 1, 2, 3].filter(function (h) { return h !== me && G.houses[h].alive && E.moodState(E.moodOf(G, h)) === 'friendly'; }).length >= 2,
+      win_gentle: won && settings.rivals === 0, win_fair: won && settings.rivals === 1, win_fierce: won && settings.rivals === 2,
+      win_wonders: won && G.over.reason === 'wonders', win_capitals: won && G.over.reason === 'capitals'
+    };
+    test['house' + me] = won;
+    TROPHIES.forEach(function (T) { if (test[T[0]] && !trophies[T[0]]) { trophies[T[0]] = Date.now(); got.push(T); } });
+    if (!got.length) return;
+    try { localStorage.setItem(TROPHY_KEY, JSON.stringify(trophies)); } catch (e) { }
+    got.forEach(function (T, n) { setTimeout(function () { toast('Trophy: ' + T[1] + '!', 'trophy'); Mu.sfx.capture(); }, 600 + n * 900); });
+  }
+  function medal(on) {
+    return '<svg viewBox="0 0 48 56" width="44" height="52"><path d="M14 2h8l4 16h-8zM34 2h-8l-4 16h8z" fill="' + (on ? '#c8282e' : '#d8d3e6') + '" stroke="#2b2a5c" stroke-width="1.8"/>' +
+      '<circle cx="24" cy="34" r="17" fill="' + (on ? '#f6bd3c' : '#ece8f4') + '" stroke="#2b2a5c" stroke-width="2.4"/><circle cx="24" cy="34" r="11" fill="none" stroke="' + (on ? '#fff3c4' : '#d8d3e6') + '" stroke-width="2"/>' +
+      (on ? '<path d="M24 26l2.6 5.2 5.8.8-4.2 4 1 5.8-5.2-2.8-5.2 2.8 1-5.8-4.2-4 5.8-.8z" fill="#fff8de" stroke="#2b2a5c" stroke-width="1.2"/>' : '<path d="M20 34h8" stroke="#b9b2cc" stroke-width="2.4" stroke-linecap="round"/>') + '</svg>';
+  }
+  function showTrophies() {
+    var n = TROPHIES.filter(function (T) { return trophyEarned(T[0]); }).length;
+    var h = '<h2>Trophies</h2><p class="sub">' + n + ' of ' + TROPHIES.length + ' won. They stay with you from game to game.</p><div class="trophies">' +
+      TROPHIES.map(function (T) { var on = trophyEarned(T[0]); return '<div class="trophy' + (on ? ' on' : '') + '">' + medal(on) + '<b>' + T[1] + '</b><span>' + T[2] + '</span></div>'; }).join('') +
+      '</div><button class="btn ghost" id="trClose">Close</button>';
+    $('trophyInner').innerHTML = h;
+    show('trophyCard');
+    $('trClose').onclick = function () { hide('trophyCard'); };
+  }
   function showMenu(confirmNew) {
     var mi = Mu.info();
     $('menuInner').innerHTML = '<h2>Menu</h2>' +
       '<button class="menu-item" id="mMusic"><span>Music</span><span class="toggle ' + (settings.music ? 'on' : '') + '"></span></button>' +
       '<button class="menu-item" id="mSfx"><span>Sound effects</span><span class="toggle ' + (settings.sfx ? 'on' : '') + '"></span></button>' +
       '<button class="menu-item" id="mStand"><span>Standings</span><span>›</span></button>' +
+      '<button class="menu-item" id="mWonders"><span>Wonders</span><span>›</span></button>' +
+      '<button class="menu-item" id="mTrophies"><span>Trophies</span><span>›</span></button>' +
       '<button class="menu-item" id="mHelp"><span>How to play</span><span>›</span></button>' +
       '<button class="menu-item" id="mNew"><span>' + (confirmNew ? 'Tap again to abandon this game' : 'New game') + '</span><span>›</span></button>' +
       '<p class="sub" style="margin-top:10px">Now playing: ' + mi.raga + ', ' + mi.tala + ', on ' + mi.inst + ' over a gaida drone and tapan drum.</p>' +
@@ -5534,6 +5755,8 @@ var Voices = (function () {
     $('mMusic').onclick = function () { Mu.unlock(); settings.music = !settings.music; Mu.setEnabled('music', settings.music); saveSettings(); showMenu(); };
     $('mSfx').onclick = function () { settings.sfx = !settings.sfx; Mu.setEnabled('sfx', settings.sfx); saveSettings(); showMenu(); };
     $('mStand').onclick = showStandings;
+    $('mWonders').onclick = function () { hide('menu'); showWonders(sel && sel.kind === 'city' ? sel.id : null); };
+    $('mTrophies').onclick = function () { hide('menu'); showTrophies(); };
     $('mHelp').onclick = function () { hide('menu'); showHelp(); };
     $('mNew').onclick = function () { if (!confirmNew) { showMenu(true); return; } hide('menu'); clearSave(); showTitle(); };
     $('mClose').onclick = function () { hide('menu'); };
@@ -5724,6 +5947,7 @@ var Voices = (function () {
       else if (c.k === 'pact') out.push([c.turn, c.h === me ? 'The other houses swore a pact against you.' : 'The houses swore a pact against ' + E.HOUSES[c.h].name + '.']);
       else if (c.k === 'yali') out.push([c.turn, who(c.h) + (c.h === me ? ' woke' : ' woke') + ' a Zmaj at ' + c.name + '.']);
       else if (c.k === 'sangam') out.push([c.turn, (c.h === me ? 'Your people danced the Great Kolo' : 'The people of ' + rulerOf(c.h).name + ' danced the Great Kolo') + '.']);
+      else if (c.k === 'wonder') out.push([c.turn, who(c.h) + ' built ' + wname(c.w) + ' in ' + c.name + '.']);
       else if (c.k === 'found') out.push([c.turn, 'Your shepherds founded ' + c.name + '.']);
     });
     return out.slice(-7);
@@ -5761,6 +5985,7 @@ var Voices = (function () {
       else if (c.k === 'yali' && c.h === me) l = 'the Zmaj woke beneath ' + c.name + '’s stones,';
       else if (c.k === 'sangam' && c.h === me) l = 'and the whole land joined hands to dance the kolo,';
       else if (c.k === 'komsi') l = 'bread and salt were shared with ' + rulerOf(c.h).name + ',';
+      else if (c.k === 'wonder' && c.h === me) l = 'and they raised ' + wname(c.w) + ' in ' + c.name + ',';
       else if (c.k === 'pact' && c.h === me) l = 'three proud houses rode out against them,';
       else if (c.k === 'fall' && c.by === me) l = 'and the house of ' + E.HOUSES[c.h].name + ' bowed its head,';
       if (l) { lines.push(l.charAt(0).toUpperCase() + l.slice(1)); n++; }
@@ -5771,13 +5996,15 @@ var Voices = (function () {
   }
   function showEnd() {
     if (!G || !G.over) return;
+    trophyEval();
     var h2 = '';
     var o = G.over, me = G.player, win = o.winner === me;
     var why = {
       capitals: win ? 'You hold every capital.' : houseName(o.winner) + ' took every capital.',
       last: win ? 'Every rival house has fallen.' : houseName(o.winner) + ' stands alone.',
       time: 'Thirty seasons have passed. ' + (win ? 'You hold the most territory.' : houseName(o.winner) + ' holds the most territory.'),
-      eliminated: 'Your last town has fallen.'
+      eliminated: 'Your last town has fallen.',
+      wonders: win ? 'You hold ' + E.CFG.wonderWin + ' wonders of the world.' : houseName(o.winner) + ' holds ' + E.CFG.wonderWin + ' wonders of the world.'
     }[o.reason];
     var max = Math.max.apply(null, o.land.concat([1]));
     var bars = o.land.map(function (n, h) { return { n: n, h: h }; }).sort(function (a, b) { return b.n - a.n; }).map(function (b) {
