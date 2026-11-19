@@ -383,6 +383,26 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; text-wrap: balance; 
 .t-kilim { height: 14px; width: 220px; margin: 8px auto 0; background: var(--kilim); border: 2px solid var(--ink); border-radius: 6px; }
 .portrait, .rport, .r-port { box-shadow: 0 0 0 3px var(--paper), 0 0 0 5px var(--red); }
 
+/* compact bottom sheet: only what you need, only while you need it */
+#panel.bare { padding: 8px; gap: 0; }
+#panel.bare::before, #panel.bare #info { display: none; }
+#panel.bare #turnBtns > * { min-height: 50px; }
+#panel:not(.more) #info :is(.stats, .counter:not(.keep), .sub, .goodt, .landmark, .perks, .growbar, .nod, .steps-h, .steps) { display: none; }
+#panel:not(.more) #info .act:not([disabled]):not(.locked) .why { display: none; }
+#panel:not(.more) #info .hint ~ .hint { display: none; }
+#panel:not(.more) #info .act.locked, #panel:not(.more) #info .city-hint { display: none; }
+#panel:not(.more) #info .acts, #panel:not(.more) #info .acts.stack { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; padding: 6px 0 2px; }
+#panel:not(.more) #info .act, #panel:not(.more) #info .act.wide { min-height: 0; padding: 4px 8px 5px; border-radius: 14px; box-shadow: 0 2px 0 var(--ink); }
+#panel:not(.more) #info .act > img, #panel:not(.more) #info .act > svg { grid-row: span 2; width: 30px; height: 32px; }
+#panel:not(.more) #info .act:disabled .why { font-size: 11px; }
+#panel { max-height: 40vh; }
+#panel.more { max-height: 60vh; }
+.ihead { position: relative; padding-right: 34px; }
+.more-btn { position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; border-radius: 50%;
+  border: 2px solid var(--ink); background: #fff; font: 800 15px/1 var(--display); color: var(--ink); display: grid; place-items: center; }
+.ihead .hp { margin-right: 4px; }
+#coach { font-size: 14.5px; }
+
 </style>
 </head>
 <body>
@@ -4843,6 +4863,7 @@ var Voices = (function () {
   $('info').addEventListener('click', function (e) {
     var b = e.target.closest('[data-act]');
     if (!b || b.disabled) return;
+    if (b.getAttribute('data-act') === 'more') { panelMore = !panelMore; renderPanel(); return; }
     act(b.getAttribute('data-act'), b.getAttribute('data-arg'));
   });
 
@@ -5033,15 +5054,22 @@ var Voices = (function () {
     var k = landKey(t), pal = LANDC[k] || ['#2b7f9c', '#1f5f7a', '#1a5068'];
     return '<svg class="sw" viewBox="0 0 30 30"><path d="M15 3l11 6v10l-11 6-11-6V9z" fill="' + pal[0] + '"/><path d="M4 19l11 6 11-6v3l-11 6-11-6z" fill="' + pal[1] + '"/></svg>';
   }
+  // The bottom sheet stays out of the way: with nothing selected it is just the two turn buttons.
+  // Tap something and you get one line plus what you can do; the little (i) opens the full story.
+  var panelMore = false, panelKey = '';
   function renderPanel() {
     setTimeout(coachUpdate, 0);
     if (!G || G.demo) return;
-    var h;
-    if (!sel) h = hintHtml();
-    else if (sel.kind === 'unit') { var u = E.unitById(G, sel.id); h = u ? unitHtml(u) : hintHtml(); }
-    else if (sel.kind === 'city') h = cityHtml(G.cities[sel.id]);
-    else h = tileHtml(G.tiles[sel.i]);
+    var h = '', key = sel ? sel.kind + (sel.id != null ? sel.id : sel.i) : '';
+    if (key !== panelKey) { panelMore = false; panelKey = key; }
+    if (sel && sel.kind === 'unit') { var u = E.unitById(G, sel.id); h = u ? unitHtml(u) : ''; }
+    else if (sel && sel.kind === 'city') h = cityHtml(G.cities[sel.id]);
+    else if (sel) h = tileHtml(G.tiles[sel.i]);
+    $('panel').classList.toggle('bare', !h);
+    $('panel').classList.toggle('more', panelMore);
     $('info').innerHTML = h;
+    var head = $('info').querySelector('.ihead');
+    if (head) head.insertAdjacentHTML('beforeend', '<button class="more-btn" data-act="more" aria-label="' + (panelMore ? 'Show less' : 'Show more about this') + '">' + (panelMore ? '×' : 'i') + '</button>');
     var n = Object.keys(ready).length;
     $('endSub').textContent = n ? n + ' unit' + (n > 1 ? 's' : '') + ' ready' : 'All done';
     $('endBtn').classList.toggle('ready', !n && !busy);
@@ -5086,7 +5114,7 @@ var Voices = (function () {
     if (mine && opts && opts.targets.length) {
       opts.targets.slice(0, 2).forEach(function (e) {
         var pv = E.combatPreview(G, u, e);
-        h += '<div class="counter"><b>' + U[e.type].name + ':</b> ' + (pv.kill ? 'you knock it out' : 'you hit ' + pv.dmg + (pv.ret ? ', it hits back ' + pv.ret : ', no hit back')) +
+        h += '<div class="counter keep"><b>' + U[e.type].name + ':</b> ' + (pv.kill ? 'you knock it out' : 'you hit ' + pv.dmg + (pv.ret ? ', it hits back ' + pv.ret : ', no hit back')) +
           (pv.tags.length ? '. <span class="sub">' + pv.tags.join(' · ') + '</span>' : '') + '</div>';
       });
     }
@@ -5145,7 +5173,7 @@ var Voices = (function () {
         h += '<div class="growbar"><span>Growth</span><span class="seeds">' + Array.apply(null, Array(need)).map(function (_, k) { return '<i class="' + (k < pop ? 'on' : '') + '"></i>'; }).join('') +
           '</span><span class="sub">' + (need - pop) + ' more to level ' + (city.level + 1) + '</span></div>';
         var open = G.tiles.filter(function (x) { return x.claim === city.id && x.cityId < 0 && !x.imp && x.tank < 0 && E.improveOptions(G, x, G.player).some(function (o) { return o.kind !== 'pasture'; }); }).length;
-        h += '<div class="hint">Build farms, boats or camps on its land' + (t.base === 'mullai' || G.tiles.some(function (x) { return x.claim === city.id && x.base === 'mullai'; }) ? ', or bring a shepherd to make a pasture' : '') + '. Each one helps it grow.' + (open ? ' <b>' + open + '</b> spots free.' : '') + '</div>';
+        h += '<div class="hint city-hint">Build farms, boats or camps on its land' + (t.base === 'mullai' || G.tiles.some(function (x) { return x.claim === city.id && x.base === 'mullai'; }) ? ', or bring a shepherd to make a pasture' : '') + '. Each one helps it grow.' + (open ? ' <b>' + open + '</b> spots free.' : '') + '</div>';
       } else h += '<div class="goodt">Fully grown.</div>';
 
       h += '<div class="acts">';
@@ -5544,6 +5572,8 @@ var Voices = (function () {
     bye: 'You have got it! Watch the rulers, mind the winter, and have fun. Roda flies off!'
   };
   var coachArrow = null;
+  var coachSeen = { st: '', t: 0 };
+  $('coach').onclick = function () { coachSeen.t = 0; $('coach').classList.remove('show'); };
   function coachUpdate() {
     var el = $('coach');
     if (!G || G.demo || !G.tut || !G.tut.coach || G.tut.coach === 'done') { el.classList.remove('show'); coachArrow = null; clearPulse(); return; }
@@ -5561,6 +5591,9 @@ var Voices = (function () {
     if (G.turn > 4 && st !== 'bye') st = 'done';   // the lesson is over either way
     G.tut.coach = st;
     if (st === 'done') { el.classList.remove('show'); coachArrow = null; clearPulse(); return; }
+    var nowT = Date.now();
+    if (coachSeen.st !== st) { coachSeen = { st: st, t: nowT }; setTimeout(coachUpdate, 7200); }
+    if (nowT - coachSeen.t > 7000) { el.classList.remove('show'); return; }
     el.innerHTML = PARROT + '<div>' + COACH[st] + '</div>';
     el.style.bottom = (vh - panelTop() + 12) + 'px';
     el.classList.add('show');
